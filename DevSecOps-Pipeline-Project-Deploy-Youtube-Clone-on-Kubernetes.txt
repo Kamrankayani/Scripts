@@ -259,7 +259,7 @@ $ cd /etc/prometheus/, ls, $ sudo nano prometheus.yml and below the job of prome
 $ promtool check config /etc/prometheus/prometheus.yml
 
 7--Reload the Prometheus configuration
-$ curl -X POST http://localhost:9090/-/reload
+ curl -X POST http://localhost:9090/-/reload
 
 8--On monitoring server go to $ cd /etc/prometheus/ & $ sudo nano prometheus.yml and add job for Jenkins
 - job_name: 'jenkins'
@@ -269,28 +269,28 @@ $ curl -X POST http://localhost:9090/-/reload
 =============================================================================================================================================================================================
 [C] Create AWS EKS Cluster
 1--Install kubectl on Jenkins Server
- $ sudo apt update
- $ sudo apt install curl
- $ curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
- $ sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
- $ kubectl version --client
+ sudo apt update
+ sudo apt install curl
+ curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
+ sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+ kubectl version --client
 
 2--Install AWS Cli
-$ curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-$ sudo apt install unzip
-$ unzip awscliv2.zip
-$ sudo ./aws/install
-$ aws --version
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+sudo apt install unzip
+unzip awscliv2.zip
+sudo ./aws/install
+aws --version
 
 3--Installing  eksctl
-$ curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
-$ cd /tmp
-$ sudo mv /tmp/eksctl /bin
-$ eksctl version
+curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+cd /tmp
+sudo mv /tmp/eksctl /bin
+eksctl version
 
 4--Setup Kubernetes using eksctl
-eksctl create cluster --name virtualtechbox-cluster \
---region ap-south-1 \
+eksctl create cluster --name virtual-cluster \
+--region us-east-1 \
 --node-type t2.small \
 --nodes 3 \
 
@@ -299,41 +299,41 @@ $ kubectl get nodes
 =============================================================================================================================================================================================
 [D] Integrate Prometheus with EKS and Import Grafana Monitoring Dashboard for Kubernetes
 1--Install Helm
-$ sudo snap install helm --classic,    $ helm version
+ sudo snap install helm --classic,     helm version
                     OR
-$ curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
-$ chmod 700 get_helm.sh
-$ ./get_helm.sh
-$ helm version
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+chmod 700 get_helm.sh
+./get_helm.sh
+ helm version
 
 
 2--Install Prometheus on EKS
-$ helm repo add stable https://charts.helm.sh/stable          ///We need to add the Helm Stable Charts for our local client
+ helm repo add stable https://charts.helm.sh/stable          ///We need to add the Helm Stable Charts for our local client
 
-$ helm repo add prometheus-community https://prometheus-community.github.io/helm-charts     ///Add Prometheus Helm repo
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts     ///Add Prometheus Helm repo
 
-$ kubectl create namespace prometheus            ///Create Prometheus namespace
+kubectl create namespace prometheus            ///Create Prometheus namespace
 
-$ helm install stable prometheus-community/kube-prometheus-stack -n prometheus      ///Install Prometheus
+helm install stable prometheus-community/kube-prometheus-stack -n prometheus      ///Install Prometheus
 
-$ kubectl get pods -n prometheus          ///To check whether Prometheus is installed
+kubectl get pods -n prometheus          ///To check whether Prometheus is installed
 
-$ kubectl get svc -n prometheus           ///to check the services file (svc) of the Prometheus
+kubectl get svc -n prometheus           ///to check the services file (svc) of the Prometheus
 
 
 ##let’s expose Prometheus to the external world using LoadBalancer
-$ kubectl edit svc stable-kube-prometheus-sta-prometheus -n prometheus    ///type:LoadBalancer, change port & targetport to 9090, save and close
+kubectl edit svc stable-kube-prometheus-sta-prometheus -n prometheus    ///type:LoadBalancer, change port & targetport to 9090, save and close
 
-$ kubectl get svc -n prometheus    //copy dns name of LB and browse with 9090
+kubectl get svc -n prometheus    //copy dns name of LB and browse with 9090
 =============================================================================================================================================================================================
 [E] Set the Trigger and Verify the CI/CD Pipeline
-$ git config --global user.name "your.name"
-$ git config --global user.email "your-email-address"
-$ git clone https://github.com/Ashfaque-9x/a-youtube-clone-app.git
-$ cd a-youtube-clone-app
-$ git add .
-$ git commit -m "test change"
-$ git push origin main
+git config --global user.name "your.name"
+git config --global user.email "your-email-address"
+git clone https://github.com/Ashfaque-9x/a-youtube-clone-app.git
+cd a-youtube-clone-app
+git add .
+git commit -m "test change"
+git push origin main
 =============================================================================================================================================================================================
 [F] Complete jenkins pipeline script
 pipeline {
@@ -433,3 +433,81 @@ $ kubectl delete deployment.apps/virtualtechbox-cluster     //delete deployment 
 $ kubectl delete service/virtualtechbox-service             //delete service for your deployment of k8s cluster
 $ eksctl delete cluster virtualtechbox-cluster --region ap-south-1     OR    eksctl delete cluster --region=ap-south-1 --name=virtualtechbox-cluster      //This command will delete your EKS cluster
 $ terraform destroy
+
+
+
+
+
+pipeline {
+    agent any
+    tools {
+        jdk 'jdk17'
+        nodejs 'nodejs'
+    }
+    
+    stages {
+        stage('clean workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('Checkout from Git') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Kamrankayani/a-youtube-clone-app.git'
+            }
+        }
+        
+            
+        stage('Install Dependencies') {
+            steps {
+                sh "npm install"
+            }
+        }
+       
+         stage("Docker Build & Push"){
+             steps{
+                 script{
+                   withDockerRegistry(credentialsId: 'dockerhub', toolName: 'docker'){   
+                      sh "docker build -t youtube-clone ."
+                      sh "docker tag youtube-clone kamrandevops23/youtube-clone:latest "
+                      sh "docker push kamrandevops23/youtube-clone:latest "
+                    }
+                }
+            }
+        }
+        stage('Debug') {
+        steps {
+           sh 'pwd'
+           sh 'ls -la'
+    }
+}
+stage('Test Kubernetes Connection') {
+    steps {
+        sh 'kubectl get nodes'
+    }
+}
+
+
+        stage('Deploy to Kubernets'){
+            steps{
+                script{
+                    withEnv(["KUBECONFIG=/home/ubuntu/.kube/config"]) {
+             dir('Kubernetes') {
+             sh 'echo "Applying deployment.yml"'
+             sh 'kubectl apply -f deployment.yml --v=8'
+        
+             sh 'echo "Applying service.yml"'
+             sh 'kubectl apply -f service.yml --v=8'
+    }
+}
+
+                }
+            }
+        }
+       
+}
+
+    }
+
+
+
